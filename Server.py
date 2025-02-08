@@ -4,81 +4,87 @@ import datetime
 
 SERVER_PORT = 63464
 MAX_CLIENTS = 3
-clients = []
+clients = {}
 
-server_socket = socket(AF_INET, SOCK_STREAM)
-server_socket.bind(("", SERVER_PORT))
-server_socket.listen(MAX_CLIENTS)
+serverSocket = socket(AF_INET, SOCK_STREAM)
+serverSocket.bind(("", SERVER_PORT))
+serverSocket.listen(MAX_CLIENTS)
 
 print("Server is now listening for connections...")
 
-client_count = 1
-client_lock = threading.Lock()
+clientCount = 1
+clientLock = threading.Lock()
 
+file_repository = ['file1.txt', 'file2.txt', 'file3.txt']
 
-def handle_client(connection_socket, address, client_name):
+def main(connectionSocket, address, clientName):
     global clients
 
-    TimeConnected = datetime.datetime.now()
+    #Date formatting
+    Time= datetime.datetime.now()
+    TimeConnected = Time.strftime("%x %X")
 
-    with client_lock:
-        clients.append({"name": client_name, "started": TimeConnected, "ended": None})
+    with clientLock:
+        clients[clientName] = {'Connected': TimeConnected, 'Disconnected': "Still Connected.."}
 
-    print(f"Hello {client_name}")
+    print(f"Hello {clientName}")
 
     try:
         while True:
-            user_input = connection_socket.recv(1024).decode()
-            print(f"Received from {client_name}: {user_input}")
+            user_input = connectionSocket.recv(1024).decode()
+            print(f"Received from {clientName}: {user_input}")
 
             if user_input == "exit":
-                TimeDisconnected = datetime.datetime.now()
+                #Date formatting
+                Time = datetime.datetime.now()
+                TimeDisconnected = Time.strftime("%x %X")
 
-                with client_lock:
-                    for client in clients:
-                        if client['name'] == client_name:
-                            client['ended'] = TimeDisconnected
-                            print(f"{client_name} disconnected at {TimeDisconnected}")
-                            clients.remove(client) 
-                            break
+                with clientLock:
+                    clients[clientName]['Disconnected'] = TimeDisconnected
+                    print(f"{clientName} disconnected: {TimeDisconnected}")
+                    del clients[clientName]
+                     
                 break
 
             elif user_input == "status":
-                status = ""
-                for client in clients:
-                    TimeDisconnected = client['ended']
-                    if TimeDisconnected:
-                        status += f"{client['name']}: Connected at {client['started']}, Disconnected at {TimeDisconnected}"
-                    else:
-                        status += f"{client['name']}: Connected at {client['started']}, Still Connected.."
-                
+                with clientLock:
+                    status = f"{clientName}: {clients[clientName]}"
                 print(status)
-                connection_socket.send(status.encode())
+                connectionSocket.send(status.encode())
+
+            elif user_input == "list":
+                file_list = "\n".join(file_repository)
+                connectionSocket.send(file_list.encode())
+
+            elif user_input in file_repository:
+                file_name = user_input
+                try:
+                    with open(file_name, 'rb') as file:
+                        file_data = file.read()
+                    connectionSocket.send(file_data)
+                except FileNotFoundError:
+                    connectionSocket.send(b"File not found.")
 
             else:
-                connection_socket.send(f"{user_input} ACK".encode())
+                connectionSocket.send(f"{user_input} ACK".encode())
 
     except Exception as e:
         print(f"An error occurred: {e}")
     
     finally:
-        connection_socket.close()
-        with client_lock:
-            for client in clients:
-                if client['name'] == client_name:
-                    client['ended'] = datetime.datetime.now()
-                    break
+        connectionSocket.close()
+        
 
-wait_for_disconnect = False
+waitDisconnect = False
 while True:
     if len(clients) < MAX_CLIENTS:
-        connection_socket, address = server_socket.accept()
-        with client_lock:
-            client_name = f"Client{client_count:02d}"
-            client_count += 1
-        threading.Thread(target=handle_client, args=(connection_socket, address, client_name), daemon=True).start()
-        wait_for_disconnect = False
+        connectionSocket, address = serverSocket.accept()
+        with clientLock:
+            clientName = f"Client{clientCount:02d}"
+            clientCount += 1
+        threading.Thread(target=main, args=(connectionSocket, address, clientName), daemon=True).start()
+        waitDisconnect = False
     else:
-        if not wait_for_disconnect:
+        if not waitDisconnect:
             print("Maximum client limit reached. Waiting for a client to disconnect...")
-            wait_for_disconnect = True
+            waitDisconnect = True
