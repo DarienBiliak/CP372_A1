@@ -77,7 +77,7 @@ def main(connectionSocket, address, clientName):
 
 waitDisconnect = False
 while True:
-    if len(clients) < MAX_CLIENTS:
+    if len(clients) <= MAX_CLIENTS:
         connectionSocket, address = serverSocket.accept()
         with clientLock:
             clientName = f"Client{clientCount:02d}"
@@ -88,3 +88,4 @@ while True:
         if not waitDisconnect:
             print("Maximum client limit reached. Waiting for a client to disconnect...")
             waitDisconnect = True
+            connectionSocket.close()
